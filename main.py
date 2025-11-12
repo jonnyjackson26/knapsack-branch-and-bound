@@ -1,110 +1,116 @@
-def fractional_knapsack_bound(node, items, capacity):
-    # Compute upper bound on profit by taking items greedily (fractional allowed)
-    total_weight = node.weight
-    total_profit = node.value
-    idx = node.level
-    while idx < len(items) and total_weight < capacity:
-        value, weight, ratio = items[idx]
-        if total_weight + weight <= capacity:
-            total_weight += weight
-            total_profit += value
-        else:
-            remain = capacity - total_weight
-            total_profit += ratio * remain
-            break
-        idx += 1
-    return total_profit
-import heapq
+import heapq  #heapq is used for the priority queue (max-heap)
 
+# Node represents a state in the branch-and-bound tree
 class Node:
     def __init__(self, level=-1, value=0, weight=0, bound=0.0):
-        self.level = level
-        self.value = value
-        self.weight = weight
-        self.bound = bound
+        self.level = level      # Which item index we're considering
+        self.value = value      # Total value so far
+        self.weight = weight    # Total weight so far
+        self.bound = bound      # Upper bound on best possible value from this node; the fractional knapsack of the node
+
+    def __lt__(self, other): #less than
+        # For heapq: we want a max-heap by bound, so we reverse the comparison
+        return self.bound > other.bound
 
 
-# read dataset (a.txt)
-
-# find ratios of each
-
-# sort by ratios
-
-# create a tree with the left most side not including anything and the rightmost side including everything in order of highest ratio things.
-
-#prune tree to remove branches that are higher than capacity 'C'.
-
-# go down all the way the right side and find your tempMax
-
-# backtrack and see if the fractional knapsack of the next node is higher than tempMax. if it is, go down that branch. If not, backtrack again.
 
 def read_data(filename):
     items = []
     with open(f'{filename}.txt', 'r') as f:
-        for line in f:
+        lines = f.readlines()
+        first_line = lines[0].strip().split()
+        # First line: [knapsack_size] [number_of_items]
+        # Remaining lines: [value] [weight] for each item
+        capacity = int(first_line[0])
+        num_items = int(first_line[1])
+        for line in lines[1:]:
             parts = line.strip().split()
             if len(parts) == 2:
                 value, weight = map(int, parts)
                 items.append((value, weight))
-    capacity = items[0][1]
-    return items[1:], capacity
+    return items, capacity
 
 def find_ratios_and_sort_by_them(items):
-    # Compute value/weight ratio for each item
-    items_with_ratio = [(value, weight, value/weight) for value, weight in items]
-    # Sort by ratio descending
-    sorted_items = sorted(items_with_ratio, key=lambda x: x[2], reverse=True)
-    return sorted_items
+    # Calculates value/weight ratio for each item and sorts items by ratio (descending)
+    items_with_ratio = [(v, w, v / w) for v, w in items]
+    return sorted(items_with_ratio, key=lambda x: x[2], reverse=True)
 
-def create_tree(items,capacity):
-    q = [] #queue of nodes
-    root = Node(level=0, value=0, weight=0, bound=0.0)
-    q.append(root)
+# Computes the upper bound (best possible value) from a node using fractional knapsack. 
+# the idea is "if i cheat (quick algorhtm) and dont even get higher than my current max, not cheating isnt even worth it"
+def fractional_knapsack_bound(node, items, capacity):
+    if node.weight >= capacity:
+        return 0  # Overweight, can't add more
 
-    while q:
-        node = q.pop(0)
-        print(f"Level: {node.level}, Value: {node.value}, Weight: {node.weight}")
+    total_weight = node.weight
+    bound = node.value
+    idx = node.level
 
-        # If we've considered all items, skip expansion
+    # Try to add items greedily by ratio
+    while idx < len(items) and total_weight < capacity: #while theres still items and the bag isnt overflowing yet
+        value, weight, ratio = items[idx]
+        if total_weight + weight <= capacity:
+            # Can take whole item
+            total_weight += weight
+            bound += value
+        else:
+            # Take fraction of item to fill knapsack
+            remain = capacity - total_weight
+            bound += ratio * remain
+            break
+        idx += 1
+
+    return bound
+
+
+def branch_and_bound_knapsack(items, capacity):
+    pq = []  # priority queue
+    tempMax = 0  # Track best value found
+
+    # Start with root node (no items chosen yet)
+    root = Node(level=0, value=0, weight=0)
+    root.bound = fractional_knapsack_bound(root, items, capacity)
+    heapq.heappush(pq, (-root.bound, root))  # max-heap by bound
+
+    while pq:
+        _, node = heapq.heappop(pq)  # Get node with highest bound
+
+        # Prune if bound is not better than best found
+        if node.bound <= tempMax:
+            continue
+
+        # If we've considered all items, skip
         if node.level >= len(items):
             continue
 
-        # --- Generate child nodes ---
-        # Child 1: Take the current item
-        value_with = node.value + items[node.level][0]
-        weight_with = node.weight + items[node.level][1]
-        # Prune branches that exceed capacity
-        if weight_with <= capacity:
-            child_with = Node(node.level + 1, value_with, weight_with, 0.0)
-            # Compute bound for child_with using fractional knapsack
-            child_with.bound = fractional_knapsack_bound(child_with, items, capacity)
-            q.append(child_with)
+        #get the next node
+        next_level = node.level + 1
+        item_value, item_weight, _ = items[node.level] 
 
-        # Child 2: Do not take the current item
-        value_without = node.value
-        weight_without = node.weight
-        child_without = Node(node.level + 1, value_without, weight_without, 0.0)
-        # Compute bound for child_without using fractional knapsack
-        child_without.bound = fractional_knapsack_bound(child_without, items, capacity)
-        q.append(child_without)
+        # --- Case 1: Include item ---
+        include = Node(next_level, node.value + item_value, node.weight + item_weight)
+        if include.weight <= capacity and include.value > tempMax:
+            tempMax = include.value  # Update best value if valid
+        include.bound = fractional_knapsack_bound(include, items, capacity)
+        if include.bound > tempMax:
+            heapq.heappush(pq, (-include.bound, include))  # Explore further
+
+        # --- Case 2: Exclude item ---
+        exclude = Node(next_level, node.value, node.weight)
+        exclude.bound = fractional_knapsack_bound(exclude, items, capacity)
+        if exclude.bound > tempMax:
+            heapq.heappush(pq, (-exclude.bound, exclude))  # Explore further
+
+    return tempMax
 
 
 
-
+# Main entry point
 def main():
-    items, capacity = read_data("a")
-    #print(items)
-    print(capacity)
-
-    items=find_ratios_and_sort_by_them(items)
-    #print(items)
-
-    tree=create_tree(items,capacity)
-    print(tree)
-
-    
+    items, capacity = read_data("b")
+    items = find_ratios_and_sort_by_them(items)
+    bestValue = branch_and_bound_knapsack(items, capacity)
+    print(f"Maximum value for knapsack of capacity {capacity} = {bestValue}")
 
 
-
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
