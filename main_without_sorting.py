@@ -47,7 +47,7 @@ def fractional_knapsack_bound(node, items, capacity):
 
     # Try to add items greedily by ratio
     while idx < len(items) and total_weight < capacity: #while theres still items and the bag isnt overflowing yet
-        value, weight, ratio = items[idx]
+        value, weight = items[idx]
         if total_weight + weight <= capacity:
             # Can take whole item
             total_weight += weight
@@ -55,7 +55,7 @@ def fractional_knapsack_bound(node, items, capacity):
         else:
             # Take fraction of item to fill knapsack
             remain = capacity - total_weight
-            bound += ratio * remain
+            bound += value/weight * remain
             break
         idx += 1
 
@@ -84,7 +84,7 @@ def branch_and_bound_knapsack(items, capacity):
 
         #get the next node
         next_level = node.level + 1
-        item_value, item_weight, _ = items[node.level] 
+        item_value, item_weight = items[node.level] 
 
         # --- Case 1: Include item ---
         include = Node(next_level, node.value + item_value, node.weight + item_weight)
@@ -106,7 +106,7 @@ def branch_and_bound_knapsack(items, capacity):
 
 def main():
     items, capacity = read_data("b")
-    items = find_ratios_and_sort_by_them(items)
+    #items = find_ratios_and_sort_by_them(items)
     bestValue = branch_and_bound_knapsack(items, capacity)
     print(f"Maximum value for knapsack of capacity {capacity} = {bestValue}")
 
